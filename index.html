@@ -10,6 +10,7 @@
             padding-top: 50px; /* 留出按钮栏的空间 */
             background-color: #f7f7f7;
         }
+
         .button-bar {
             position: fixed;
             top: 0;
@@ -18,21 +19,24 @@
             border-bottom: 1px solid #e7e7e7;
             padding: 10px 0;
             text-align: center;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
+
         #container {
             max-width: 800px;
             margin: auto;
             padding: 0 20px;
         }
+
         #title {
             font-size: 24px;
             font-weight: bold;
-            margin-top: 20px;
+            margin-top: 110px;
             padding: 10px;
             background-color: #dfefff;
             border-radius: 5px;
         }
+
         #content {
             display: none;
             text-align: left;
@@ -40,29 +44,55 @@
             padding: 20px;
             background-color: #fff;
             border-radius: 5px;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
             font-size: 18px;
             line-height: 1.6;
             text-align: justify;
         }
+
         button {
-            font-size: 16px;
             padding: 10px 20px;
+            font-size: 16px;
+            margin-left: 5px; /* Add a little space between buttons */
             border: none;
             border-radius: 5px;
             background-color: #007bff;
             color: white;
             cursor: pointer;
             transition: background-color 0.2s;
-            margin: 0 10px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
+
         button:hover {
             background-color: #0056b3;
+        }
+
+        .toolbar {
+            margin-top: 10px;
+            margin-bottom: 10px;
+        }
+
+        select {
+            padding: 10px;
+            margin-right: 10px;
+            font-size: 16px;
+            border: 1px solid #127ae3;
+            border-radius: 5px;
         }
     </style>
 </head>
 <body>
+
 <div class="button-bar">
+
+    <div class="toolbar">
+        <label for="pdfSelect">选择PDF:</label>
+        <select id="pdfSelect">
+            <option value="./怎么办120道.pdf">怎么办120道</option>
+            <option value="./结构化怎么说+你是谁真题汇总100道.pdf">结构化怎么说+你是谁真题汇总100道</option>
+        </select>
+        <button id="loadPdf">加载PDF</button>
+    </div>
     <button id="showAnswer">展示答案</button>
     <button id="nextTitle">换一题</button>
 </div>
@@ -71,23 +101,11 @@
     <div id="content"></div>
 </div>
 
-<!-- 确保替换下面的src为PDF.js库实际的路径 -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.5.207/pdf.min.js"></script>
 <script>
-    let titles = [];
     let currentIndex = -1;
     let isAnswerVisible = false;
 
-    // PDF文件的URL
-    const pdfPath = './怎么办120道.pdf'; // 将此路径替换为您的PDF文件的服务器路径
-
-
-    function isTitle(item) {
-        // 检查文本内容是否符合标题的模式
-        const titlePattern = /^\d+\..+/; // 匹配数字开头后面跟着点的模式
-        return titlePattern.test(item.str) ; // 假设标题使用了加粗字体
-    }
-    // 全局变量来存储标题和内容
     let titlesAndContents = [];
 
     function extractTitlesAndContents(lines) {
@@ -102,7 +120,7 @@
             if (/^\d+\..+/.test(line.str.trim())) {
                 if (currentTitle !== null) {
                     // 如果当前标题非空，则保存当前标题和其对应的内容
-                    titlesAndContents.push({ title: currentTitle, content: content.join('\n') });
+                    titlesAndContents.push({title: currentTitle, content: content.join('\n')});
                 }
                 // 重置当前标题和内容
                 currentTitle = line.str.trim();
@@ -114,64 +132,55 @@
 
             // 如果是最后一行，确保将最后的标题和内容也保存
             if (index === lines.length - 1 && currentTitle !== null) {
-                titlesAndContents.push({ title: currentTitle, content: content.join('\n') });
+                titlesAndContents.push({title: currentTitle, content: content.join('\n')});
             }
         });
     }
 
+    document.getElementById('loadPdf').addEventListener('click', function () {
+        const pdfPath = document.getElementById('pdfSelect').value;
+        // 清空先前的标题和内容
+        document.getElementById('title').textContent = '';
+        document.getElementById('content').textContent = '';
+        // 使用PDF.js加载选定的PDF文件
+        pdfjsLib.getDocument(pdfPath).promise.then(function (pdf) {
+            const numPages = pdf.numPages;
+            const promises = [];
+            for (let i = 1; i <= numPages; i++) {
+                promises.push(pdf.getPage(i).then(page => page.getTextContent({normalizeWhitespace: true}).then(function (textContent) {
+                    // 初始化一个空数组来存储每一行的文本
+                    const lines = [];
+                    // 上一个文本块的垂直位置
+                    let lastY;
+                    textContent.items.forEach(function (item) {
+                        // 使用transform属性中的第五个元素作为垂直位置（Y坐标）
+                        if (lastY !== item.transform[5] || lines.length === 0) {
+                            // 如果Y坐标改变了，我们开始一个新的行
+                            lines.push({str: item.str, transform: item.transform, fontName: item.fontName});
+                            lastY = item.transform[5];
+                        } else {
+                            // 否则，我们将文本添加到当前行
+                            lines[lines.length - 1].str += item.str;
+                        }
+                    });
+                    return lines;
+                })));
+            }
 
-    // 加载PDF并提取标题
-    pdfjsLib.getDocument(pdfPath).promise.then(function(pdf) {
-        const numPages = pdf.numPages;
-        const promises = [];
-        for (let i = 1; i <= numPages; i++) {
-            promises.push(pdf.getPage(i).then(page => page.getTextContent({ normalizeWhitespace: true }).then(function(textContent) {
-                // 初始化一个空数组来存储每一行的文本
-                const lines = [];
-                // 上一个文本块的垂直位置
-                let lastY;
-                textContent.items.forEach(function(item) {
-                    // 使用transform属性中的第五个元素作为垂直位置（Y坐标）
-                    if (lastY !== item.transform[5] || lines.length === 0) {
-                        // 如果Y坐标改变了，我们开始一个新的行
-                        lines.push({ str: item.str, transform: item.transform, fontName: item.fontName });
-                        lastY = item.transform[5];
-                    } else {
-                        // 否则，我们将文本添加到当前行
-                        lines[lines.length - 1].str += item.str;
-                    }
+            // 之前提到的Promise.all逻辑结束后，调用这个函数来初始化titlesAndContents数组
+            Promise.all(promises).then(pagesLines => {
+                let allLines = [];
+                pagesLines.forEach(lines => {
+                    allLines = allLines.concat(lines);
                 });
-                return lines;
-            })));
-        }
-
-        // 之前提到的Promise.all逻辑结束后，调用这个函数来初始化titlesAndContents数组
-        Promise.all(promises).then(pagesLines => {
-            let allLines = [];
-            pagesLines.forEach(lines => {
-                allLines = allLines.concat(lines);
+                extractTitlesAndContents(allLines);
+                nextTitle();
             });
-            extractTitlesAndContents(allLines);
-            nextTitle();
-        });
 
+        });
     });
 
-    function showContent(index) {
-        const contentElement = document.getElementById('content');
-        console.log(isAnswerVisible)
-        if (isAnswerVisible) {
-            // 隐藏内容
-            contentElement.style.display = 'none';
-            document.getElementById('showAnswer').textContent = '展示答案';
-        } else {
-            // 显示内容
-            contentElement.textContent = titlesAndContents[index].content;
-            contentElement.style.display = 'block';
-            document.getElementById('showAnswer').textContent = '隐藏答案';
-        }
-        isAnswerVisible = !isAnswerVisible;
-    }
+
     // 展示答案函数，根据当前状态切换显示或隐藏答案
     function toggleAnswer() {
         const contentElement = document.getElementById('content');
@@ -192,6 +201,7 @@
             isAnswerVisible = true;
         }
     }
+
     document.getElementById('showAnswer').addEventListener('click', toggleAnswer);
 
     document.getElementById('nextTitle').addEventListener('click', nextTitle);
@@ -213,6 +223,7 @@
         document.getElementById('showAnswer').textContent = '展示答案';
         isAnswerVisible = false;
     }
+
     // 初始化时不显示答案
     document.addEventListener('DOMContentLoaded', (event) => {
         // 隐藏内容区域
