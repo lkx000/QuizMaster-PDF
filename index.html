@@ -11,6 +11,30 @@
             background-color: #f7f7f7;
         }
 
+        .loader {
+            border: 5px solid #f3f3f3; /* Light grey */
+            border-top: 5px solid #3498db; /* Blue */
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 2s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* 隐藏加载指示器 */
+        .hidden {
+            display: none;
+        }
+
         .button-bar {
             position: fixed;
             top: 0;
@@ -50,7 +74,7 @@
             text-align: justify;
         }
 
-        button {
+        input, button {
             padding: 10px 20px;
             font-size: 16px;
             margin-left: 5px; /* Add a little space between buttons */
@@ -63,7 +87,7 @@
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
 
-        button:hover {
+        input, button:hover {
             background-color: #0056b3;
         }
 
@@ -82,16 +106,20 @@
     </style>
 </head>
 <body>
+<!-- 加载指示器 -->
+<div class="loader" id="loader"></div>
 
 <div class="button-bar">
-
     <div class="toolbar">
         <label for="pdfSelect">选择PDF:</label>
         <select id="pdfSelect">
             <option value="./怎么办120道.pdf">怎么办120道</option>
             <option value="./结构化怎么说+你是谁真题汇总100道.pdf">结构化怎么说+你是谁真题汇总100道</option>
+            <option value="">--选择已有PDF--</option>
         </select>
         <button id="loadPdf">加载PDF</button>
+        或者
+        <input accept="pdf" id="uploadPdf" type="file">
     </div>
     <button id="showAnswer">展示答案</button>
     <button id="nextTitle">换一题</button>
@@ -137,13 +165,9 @@
         });
     }
 
-    document.getElementById('loadPdf').addEventListener('click', function () {
-        const pdfPath = document.getElementById('pdfSelect').value;
-        // 清空先前的标题和内容
-        document.getElementById('title').textContent = '';
-        document.getElementById('content').textContent = '';
-        // 使用PDF.js加载选定的PDF文件
-        pdfjsLib.getDocument(pdfPath).promise.then(function (pdf) {
+    function processPDF(par) {
+        showLoader(true);
+        pdfjsLib.getDocument(par).promise.then(function (pdf) {
             const numPages = pdf.numPages;
             const promises = [];
             for (let i = 1; i <= numPages; i++) {
@@ -176,8 +200,18 @@
                 extractTitlesAndContents(allLines);
                 nextTitle();
             });
-
+        }).finally(r => {
+            showLoader(false);
         });
+    }
+
+    document.getElementById('loadPdf').addEventListener('click', function () {
+        const pdfPath = document.getElementById('pdfSelect').value;
+        // 清空先前的标题和内容
+        document.getElementById('title').textContent = '';
+        document.getElementById('content').textContent = '';
+        // 使用PDF.js加载选定的PDF文件
+        processPDF(pdfPath)
     });
 
 
@@ -231,6 +265,39 @@
         isAnswerVisible = false;
         // 可以在这里调用函数来加载PDF并提取标题和内容
     });
+
+    document.getElementById('uploadPdf').addEventListener('change', function (event) {
+        const file = event.target.files[0];
+        if (file && file.type === 'application/pdf') {
+            const fileReader = new FileReader();
+            fileReader.onload = function () {
+                const typedarray = new Uint8Array(this.result);
+                processPDF({data: typedarray})
+
+            };
+            fileReader.readAsArrayBuffer(file);
+        }
+    });
+
+    function showLoader(show) {
+        document.getElementById('loader').style.display = show ? 'block' : 'none';
+    }
+
+    function loadAndDisplayFirstTitle(pdfPath) {
+        showLoader(true);
+        pdfjsLib.getDocument(pdfPath).promise.then(function (pdf) {
+            // 伪代码：调用您的逻辑来解析PDF和提取标题
+            processPDF();
+            showLoader(false); // 加载完成后隐藏加载指示器
+        });
+    }
+
+    // 页面加载时默认加载第一个PDF并显示第一个题目
+    document.addEventListener('DOMContentLoaded', function () {
+        const defaultPdfPath = './怎么办120道.pdf'; // 替换为默认PDF的路径
+        processPDF(defaultPdfPath)
+    });
+
 </script>
 </body>
 </html>
