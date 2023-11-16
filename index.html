@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>PDF标题提取器</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding-top: 50px; /* 留出按钮栏的空间 */
+            background-color: #f7f7f7;
+        }
+        .button-bar {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            background: #fff;
+            border-bottom: 1px solid #e7e7e7;
+            padding: 10px 0;
+            text-align: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        #container {
+            max-width: 800px;
+            margin: auto;
+            padding: 0 20px;
+        }
+        #title {
+            font-size: 24px;
+            font-weight: bold;
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #dfefff;
+            border-radius: 5px;
+        }
+        #content {
+            display: none;
+            text-align: left;
+            margin-top: 20px;
+            padding: 20px;
+            background-color: #fff;
+            border-radius: 5px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            font-size: 18px;
+            line-height: 1.6;
+            text-align: justify;
+        }
+        button {
+            font-size: 16px;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            background-color: #007bff;
+            color: white;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            margin: 0 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+<div class="button-bar">
+    <button id="showAnswer">展示答案</button>
+    <button id="nextTitle">换一题</button>
+</div>
+<div id="container">
+    <div id="title"></div>
+    <div id="content"></div>
+</div>
+
+<!-- 确保替换下面的src为PDF.js库实际的路径 -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.5.207/pdf.min.js"></script>
+<script>
+    let titles = [];
+    let currentIndex = -1;
+    let isAnswerVisible = false;
+
+    // PDF文件的URL
+    const pdfPath = './怎么办120道.pdf'; // 将此路径替换为您的PDF文件的服务器路径
+
+
+    function isTitle(item) {
+        // 检查文本内容是否符合标题的模式
+        const titlePattern = /^\d+\..+/; // 匹配数字开头后面跟着点的模式
+        return titlePattern.test(item.str) ; // 假设标题使用了加粗字体
+    }
+    // 全局变量来存储标题和内容
+    let titlesAndContents = [];
+
+    function extractTitlesAndContents(lines) {
+        let currentTitle = null;
+        let content = [];
+
+        lines.forEach((line, index) => {
+            // 跳过仅包含数字的行（假定为页码）
+            if (/^\d+$/.test(line.str.trim())) return;
+
+            // 检查是否是标题行（以数字和点开头）
+            if (/^\d+\..+/.test(line.str.trim())) {
+                if (currentTitle !== null) {
+                    // 如果当前标题非空，则保存当前标题和其对应的内容
+                    titlesAndContents.push({ title: currentTitle, content: content.join('\n') });
+                }
+                // 重置当前标题和内容
+                currentTitle = line.str.trim();
+                content = [];
+            } else {
+                // 如果不是标题，则添加到内容数组中，保持换行
+                content.push(line.str.trim());
+            }
+
+            // 如果是最后一行，确保将最后的标题和内容也保存
+            if (index === lines.length - 1 && currentTitle !== null) {
+                titlesAndContents.push({ title: currentTitle, content: content.join('\n') });
+            }
+        });
+    }
+
+
+    // 加载PDF并提取标题
+    pdfjsLib.getDocument(pdfPath).promise.then(function(pdf) {
+        const numPages = pdf.numPages;
+        const promises = [];
+        for (let i = 1; i <= numPages; i++) {
+            promises.push(pdf.getPage(i).then(page => page.getTextContent({ normalizeWhitespace: true }).then(function(textContent) {
+                // 初始化一个空数组来存储每一行的文本
+                const lines = [];
+                // 上一个文本块的垂直位置
+                let lastY;
+                textContent.items.forEach(function(item) {
+                    // 使用transform属性中的第五个元素作为垂直位置（Y坐标）
+                    if (lastY !== item.transform[5] || lines.length === 0) {
+                        // 如果Y坐标改变了，我们开始一个新的行
+                        lines.push({ str: item.str, transform: item.transform, fontName: item.fontName });
+                        lastY = item.transform[5];
+                    } else {
+                        // 否则，我们将文本添加到当前行
+                        lines[lines.length - 1].str += item.str;
+                    }
+                });
+                return lines;
+            })));
+        }
+
+        // 之前提到的Promise.all逻辑结束后，调用这个函数来初始化titlesAndContents数组
+        Promise.all(promises).then(pagesLines => {
+            let allLines = [];
+            pagesLines.forEach(lines => {
+                allLines = allLines.concat(lines);
+            });
+            extractTitlesAndContents(allLines);
+            nextTitle();
+        });
+
+    });
+
+    function showContent(index) {
+        const contentElement = document.getElementById('content');
+        console.log(isAnswerVisible)
+        if (isAnswerVisible) {
+            // 隐藏内容
+            contentElement.style.display = 'none';
+            document.getElementById('showAnswer').textContent = '展示答案';
+        } else {
+            // 显示内容
+            contentElement.textContent = titlesAndContents[index].content;
+            contentElement.style.display = 'block';
+            document.getElementById('showAnswer').textContent = '隐藏答案';
+        }
+        isAnswerVisible = !isAnswerVisible;
+    }
+    // 展示答案函数，根据当前状态切换显示或隐藏答案
+    function toggleAnswer() {
+        const contentElement = document.getElementById('content');
+        const button = document.getElementById('showAnswer');
+
+        if (isAnswerVisible) {
+            // 隐藏答案
+            contentElement.style.display = 'none';
+            button.textContent = '展示答案';
+            isAnswerVisible = false;
+        } else {
+            // 显示答案
+            if (currentIndex >= 0 && currentIndex < titlesAndContents.length) {
+                contentElement.innerHTML = titlesAndContents[currentIndex].content.replace(/\n/g, '<br>');
+            }
+            contentElement.style.display = 'block';
+            button.textContent = '隐藏答案';
+            isAnswerVisible = true;
+        }
+    }
+    document.getElementById('showAnswer').addEventListener('click', toggleAnswer);
+
+    document.getElementById('nextTitle').addEventListener('click', nextTitle);
+
+    // 修改nextTitle函数，现在它会调用showContent来更新内容
+    function nextTitle() {
+        if (titlesAndContents.length === 0) {
+            alert('PDF中没有找到标题。');
+            return;
+        }
+        let randomIndex;
+        do {
+            randomIndex = Math.floor(Math.random() * titlesAndContents.length);
+        } while (titlesAndContents.length > 1 && randomIndex === currentIndex);
+        currentIndex = randomIndex;
+        document.getElementById('title').textContent = titlesAndContents[currentIndex].title;
+        // 每次换题时都隐藏答案
+        document.getElementById('content').style.display = 'none';
+        document.getElementById('showAnswer').textContent = '展示答案';
+        isAnswerVisible = false;
+    }
+    // 初始化时不显示答案
+    document.addEventListener('DOMContentLoaded', (event) => {
+        // 隐藏内容区域
+        document.getElementById('content').style.display = 'none';
+        isAnswerVisible = false;
+        // 可以在这里调用函数来加载PDF并提取标题和内容
+    });
+</script>
+</body>
+</html>
